@@ -1,27 +1,23 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 public class LightningHazard : MonoBehaviour
 {
     public static LightningHazard Instance { get; private set; }
 
     [Header("Settings")]
-    [SerializeField] private float warningTime = 5f;   // giây cảnh báo
-    [SerializeField] private float strikeDelay = 3f;   // giây sau cảnh báo → sét đánh
-    [SerializeField] private int minValueToTarget = 64; // giá trị tối thiểu để bị nhắm
+    [SerializeField] private float intervalBetweenStrikes = 20f; // test: 20s
+    [SerializeField] private float warningDuration = 5f;
 
-    [Header("VFX")]
-    [SerializeField] private GameObject lightningWarningPrefab; // icon cảnh báo ⚡
-    [SerializeField] private GameObject lightningStrikePrefab;  // hiệu ứng sét
+    [Header("References - Kéo vào Inspector")]
+    [SerializeField] private RectTransform[] cellTransforms; // ✅ kéo 16 cells từ Board vào
+    [SerializeField] private Transform warningParent;        // ✅ kéo TileParent vào
 
     private BoardManager boardManager;
-
-    // tracking: grid[x,y] → thời gian không di chuyển
-    private float[,] stationaryTime;
-    private bool[,] isWarned;
     private int width = 4, height = 4;
-
     private bool initialized = false;
 
     private void Awake()
@@ -35,92 +31,149 @@ public class LightningHazard : MonoBehaviour
         width = w;
         height = h;
         boardManager = bm;
-        stationaryTime = new float[w, h];
-        isWarned = new bool[w, h];
-        initialized = true; // ✅
+        initialized = true;
+
+        // ✅ Debug in ra tất cả cell positions để kiểm tra
+        for (int i = 0; i < cellTransforms.Length; i++)
+        {
+            if (cellTransforms[i] != null)
+                Debug.Log($"Cell[{i}] name={cellTransforms[i].name} pos={cellTransforms[i].position}");
+        }
+
+        StartCoroutine(StrikeLoop());
     }
 
-    // Gọi sau mỗi nước đi từ BoardManager
-    public void OnBoardChanged(int[,] grid)
+    public void ResetTimer(int x, int y) { }
+
+    private IEnumerator StrikeLoop()
     {
-        for (int x = 0; x < width; x++)
+        while (true)
         {
-            for (int y = 0; y < height; y++)
+            yield return new WaitForSeconds(intervalBetweenStrikes);
+            if (!initialized) continue;
+
+            int[,] grid = boardManager.GetGrid();
+            var candidates = new List<Vector2Int>();
+
+            for (int x = 0; x < width; x++)
+                for (int y = 0; y < height; y++)
+                    if (grid[x, y] > 0)
+                        candidates.Add(new Vector2Int(x, y));
+
+            if (candidates.Count == 0)
             {
-                int val = grid[x, y];
-                if (val >= minValueToTarget)
-                {
-                    stationaryTime[x, y] += Time.deltaTime; // sẽ update trong Tick
-                }
-                else
-                {
-                    stationaryTime[x, y] = 0f;
-                    isWarned[x, y] = false;
-                }
+                Debug.Log("⚠️ Không có tile nào để đánh!");
+                continue;
             }
+
+            Vector2Int target = candidates[Random.Range(0, candidates.Count)];
+            Debug.Log($"⚡ Nhắm ô [{target.x},{target.y}] giá trị={grid[target.x, target.y]}");
+            StartCoroutine(StrikeCountdown(target.x, target.y));
         }
     }
 
-    public void Tick(int[,] grid)
+    private GameObject CreateWarningUI(RectTransform cellRect)
     {
-        if (!initialized) return; // ✅ guard
+        GameObject obj = new GameObject("LightningWarning");
+        obj.transform.SetParent(cellRect, false);
 
-        for (int x = 0; x < width; x++)
-        {
-            for (int y = 0; y < height; y++)
-            {
-                int val = grid[x, y];
-                if (val < minValueToTarget) continue;
+        RectTransform rect = obj.AddComponent<RectTransform>();
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
 
-                stationaryTime[x, y] += Time.deltaTime;
+        Canvas canvas = obj.AddComponent<Canvas>();
+        canvas.overrideSorting = true;
+        canvas.sortingOrder = 999;
+        obj.AddComponent<GraphicRaycaster>();
 
-                // Bắt đầu cảnh báo
-                if (stationaryTime[x, y] >= warningTime && !isWarned[x, y])
-                {
-                    isWarned[x, y] = true;
-                    StartCoroutine(StrikeCountdown(x, y, grid));
-                }
-            }
-        }
+        Image bg = obj.AddComponent<Image>();
+        bg.color = new Color(1f, 0.1f, 0f, 0.85f);
+        bg.raycastTarget = false;
+
+        GameObject textObj = new GameObject("Text");
+        textObj.transform.SetParent(obj.transform, false);
+
+        TMP_Text txt = textObj.AddComponent<TextMeshProUGUI>();
+        // ✅ Bỏ emoji ⚡, dùng text thường
+        txt.text = $"!\n{Mathf.CeilToInt(warningDuration)}";
+        txt.fontSize = 60;
+        txt.fontStyle = FontStyles.Bold;
+        txt.alignment = TextAlignmentOptions.Center;
+        txt.color = Color.yellow;
+        txt.raycastTarget = false;
+
+        RectTransform textRect = textObj.GetComponent<RectTransform>();
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = Vector2.zero;
+        textRect.offsetMax = Vector2.zero;
+
+        return obj;
     }
 
-    // Gọi khi tile di chuyển → reset timer
-    public void ResetTimer(int x, int y)
+    private IEnumerator StrikeCountdown(int x, int y)
     {
-        if (!initialized) return; // ✅ guard
-        stationaryTime[x, y] = 0f;
-        isWarned[x, y] = false;
-    }
+        RectTransform cellRect = boardManager.GetCellRect(x, y);
+        if (cellRect == null) { Debug.LogError($"❌ GetCellRect({x},{y}) null!"); yield break; }
 
-    private IEnumerator StrikeCountdown(int x, int y, int[,] grid)
-    {
-        // Hiện warning icon tại tile
-        Vector3 worldPos = boardManager.GetCellWorldPos(x, y);
-        GameObject warning = null;
-        if (lightningWarningPrefab != null)
-            warning = Instantiate(lightningWarningPrefab, worldPos, Quaternion.identity);
+        GameObject warning = CreateWarningUI(cellRect);
+        TMP_Text countdownText = warning.GetComponentInChildren<TMP_Text>();
 
-        // Nhấp nháy trong strikeDelay giây
         float elapsed = 0f;
-        while (elapsed < strikeDelay)
+        float blinkInterval = 0.25f;
+        float nextBlink = 0f;
+        bool visible = true;
+
+        while (elapsed < warningDuration)
         {
             elapsed += Time.deltaTime;
-            // Nếu tile đã bị move/merge → huỷ cảnh báo
-            if (!isWarned[x, y])
+            nextBlink += Time.deltaTime;
+
+            if (nextBlink >= blinkInterval)
             {
-                if (warning) Destroy(warning);
-                yield break;
+                nextBlink = 0f;
+                visible = !visible;
+                if (warning) warning.SetActive(visible);
             }
+
+            // ✅ Không dùng emoji
+            if (countdownText != null)
+                countdownText.text = $"!\n{Mathf.CeilToInt(warningDuration - elapsed)}";
+
             yield return null;
         }
 
-        // ⚡ Sét đánh!
         if (warning) Destroy(warning);
-        if (lightningStrikePrefab != null)
-            Instantiate(lightningStrikePrefab, worldPos, Quaternion.identity);
-
+        StartCoroutine(FlashEffect(cellRect));
         boardManager.DestroyTile(x, y);
-        stationaryTime[x, y] = 0f;
-        isWarned[x, y] = false;
+        Debug.Log($"Destroy grid({x},{y})");
+    }
+
+    private IEnumerator FlashEffect(RectTransform cellRect)
+    {
+        GameObject flash = new GameObject("Flash");
+        flash.transform.SetParent(cellRect, false);
+
+        RectTransform rect = flash.AddComponent<RectTransform>();
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
+
+        Image img = flash.AddComponent<Image>();
+        img.color = new Color(1f, 0.9f, 0f, 1f);
+        img.raycastTarget = false;
+
+        float t = 0f;
+        while (t < 1f)
+        {
+            t += Time.deltaTime / 0.5f;
+            img.color = new Color(1f, 0.9f, 0f, Mathf.Lerp(1f, 0f, t));
+            yield return null;
+        }
+
+        Destroy(flash);
     }
 }

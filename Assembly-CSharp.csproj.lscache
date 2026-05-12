@@ -52,7 +52,9 @@ TemporaryDependencyNodeTargetIdentifier=netstandard2.1
 [sourceFiles]
 Assets/Scripts/
  BoardManager.cs
+ FogController.cs
  GameManager.cs
+ GameOverUI.cs
  LightningHazard.cs
  NightModeHazard.cs
  Tile.cs

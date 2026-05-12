@@ -51,12 +51,15 @@ public class BoardManager : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.S)) StartCoroutine(MoveCoroutine(Vector2Int.down));
         if (Input.GetKeyDown(KeyCode.Z)) Undo();
 
-        // Tick hazards
-        LightningHazard.Instance?.Tick(grid);
-
-        // Tap để xua màn đêm (click chuột / touch)
         if (Input.GetMouseButtonDown(0))
             NightModeHazard.Instance?.RegisterTap();
+    }
+
+    // ✅ Thêm GetCellRect để LightningHazard dùng
+    public RectTransform GetCellRect(int x, int y)
+    {
+        int index = (height - 1 - y) * width + x;
+        return cellTransforms[index];
     }
 
     // ✅ Expose để Hazard scripts dùng
@@ -357,7 +360,10 @@ public class BoardManager : MonoBehaviour
         var moves = new List<MoveInfo>();
         anyMoved = false;
 
-        // Clone grid để tính toán
+        // ✅ Lấy ô bị block từ NightMode
+        var blocked = NightModeHazard.Instance?.BlockedCells
+            ?? new System.Collections.Generic.HashSet<Vector2Int>();
+
         int[,] tempGrid = (int[,])grid.Clone();
         bool[,] merged = new bool[width, height];
 
@@ -370,8 +376,10 @@ public class BoardManager : MonoBehaviour
             {
                 if (tempGrid[x, y] == 0) continue;
 
-                int currentX = x;
-                int currentY = y;
+                // ✅ Tile ở ô bị block không được di chuyển
+                if (blocked.Contains(new Vector2Int(x, y))) continue;
+
+                int currentX = x, currentY = y;
 
                 while (true)
                 {
@@ -380,12 +388,14 @@ public class BoardManager : MonoBehaviour
 
                     if (nextX < 0 || nextX >= width || nextY < 0 || nextY >= height) break;
 
+                    // ✅ Không di chuyển vào ô bị block
+                    if (blocked.Contains(new Vector2Int(nextX, nextY))) break;
+
                     if (tempGrid[nextX, nextY] == 0)
                     {
                         tempGrid[nextX, nextY] = tempGrid[currentX, currentY];
                         tempGrid[currentX, currentY] = 0;
-                        currentX = nextX;
-                        currentY = nextY;
+                        currentX = nextX; currentY = nextY;
                         anyMoved = true;
                     }
                   else if (tempGrid[nextX, nextY] == tempGrid[currentX, currentY] && !merged[nextX, nextY])
@@ -394,8 +404,7 @@ public class BoardManager : MonoBehaviour
                         tempGrid[currentX, currentY] = 0;
                         merged[nextX, nextY] = true;
                         anyMoved = true;
-                        currentX = nextX; // ✅ cập nhật vị trí trước khi break
-                        currentY = nextY;
+                        currentX = nextX; currentY = nextY;
                         break;
                     }
                     else break;
@@ -479,5 +488,86 @@ public class BoardManager : MonoBehaviour
             sb.AppendLine();
         }
         Debug.Log(sb.ToString());
+    }
+
+    // ✅ Expose grid để LightningHazard đọc
+    public int[,] GetGrid() => grid;
+
+    // ✅ Expose TileParent
+    public Transform TileParent => tileParent;
+
+    // ✅ Gọi khi hết nước đi
+    // ✅ Thêm hàm resume để reset trạng thái
+    public void ResumeGame()
+    {
+        isAnimating = false;
+        StopAllCoroutines(); // clear coroutine cũ nếu bị kẹt
+        Debug.Log("✅ Board resumed");
+    }
+
+    public void TriggerGameOver()
+    {
+        int score = GameManager.Instance.Score;
+        int best = PlayerPrefs.GetInt("BestScore", 0);
+        if (score > best)
+        {
+            best = score;
+            PlayerPrefs.SetInt("BestScore", best);
+        }
+
+        // ✅ Dừng nhận input trước khi show GameOver
+        isAnimating = true;
+        GameOverUI.Instance?.ShowGameOver(score, best);
+    }
+
+    public void DestroyLowestTile()
+    {
+        int minVal = int.MaxValue;
+        int minX = -1, minY = -1;
+
+        for (int x = 0; x < width; x++)
+            for (int y = 0; y < height; y++)
+                if (grid[x, y] > 0 && grid[x, y] < minVal)
+                {
+                    minVal = grid[x, y];
+                    minX = x; minY = y;
+                }
+
+        if (minX == -1) return;
+        DestroyTile(minX, minY);
+
+        if (!HasValidMoves())
+            TriggerGameOver();
+    }
+
+    private bool HasValidMoves()
+    {
+        for (int x = 0; x < width; x++)
+            for (int y = 0; y < height; y++)
+            {
+                if (grid[x, y] == 0) return true;
+                if (x + 1 < width && grid[x + 1, y] == grid[x, y]) return true;
+                if (y + 1 < height && grid[x, y + 1] == grid[x, y]) return true;
+            }
+        return false;
+    }
+
+    public void RestartGame()
+    {
+        for (int x = 0; x < width; x++)
+            for (int y = 0; y < height; y++)
+            {
+                if (tileUIs[x, y] != null)
+                {
+                    Destroy(tileUIs[x, y].gameObject);
+                    tileUIs[x, y] = null;
+                }
+                grid[x, y] = 0;
+            }
+
+        GameManager.Instance.SetScore(0); // ✅ reset score qua GameManager
+        SpawnRandomTile();
+        SpawnRandomTile();
+        RenderBoard();
     }
 }

@@ -13,7 +13,6 @@ public class GameManager : MonoBehaviour
     [SerializeField] private GameObject winPanel;
     [SerializeField] private Button restartButton;
 
-    private int score = 0;
     private int bestScore = 0;
     private bool hasWon = false;
 
@@ -35,12 +34,14 @@ public class GameManager : MonoBehaviour
         restartButton?.onClick.AddListener(RestartGame);
     }
 
+    public int Score { get; private set; }
+
     public void AddScore(int value)
     {
-        score += value;
-        if (score > bestScore)
+        Score += value;
+        if (Score > bestScore)
         {
-            bestScore = score;
+            bestScore = Score;
             PlayerPrefs.SetInt("BestScore", bestScore);
         }
         UpdateScoreUI();
@@ -63,7 +64,7 @@ public class GameManager : MonoBehaviour
     [System.Obsolete]
     public void RestartGame()
     {
-        score = 0;
+        Score = 0;
         hasWon = false;
         UpdateScoreUI();
         gameOverPanel?.SetActive(false);
@@ -74,15 +75,13 @@ public class GameManager : MonoBehaviour
 
     private void UpdateScoreUI()
     {
-        if (scoreText) scoreText.text = score.ToString();
+        if (scoreText) scoreText.text = Score.ToString();
         if (bestText) bestText.text = bestScore.ToString();
     }
 
-    public int Score => score; // ✅ expose Score
-
     public void SetScore(int value)
     {
-        score = value;
+        Score = value;
         UpdateScoreUI();
     }
 }

@@ -18,12 +18,24 @@ public class NightModeHazard : MonoBehaviour
     [SerializeField] private GameObject handPrefab;     // prefab cánh tay (UI Image)
     [SerializeField] private Image tapProgressBar;      // Image với ImageType = Filled
 
+    [Header("Fog")]
+    [SerializeField] private FogController fogController;
+
+    [Header("Penalty")]
+    [SerializeField] private float tapTimeLimit = 5f;    // giây để tap đủ trước khi bị block
+    [SerializeField] private GameObject blockedCellOverlayPrefab; // overlay đỏ/tối trên ô bị block
+
     private float gameTime = 0f;
     private bool nightModeActive = false;
     private bool nightTriggered = false;
     private int currentTaps = 0;
+    private int tapsAtLastCheck = 0;
     private List<GameObject> activeHands = new List<GameObject>();
     public HashSet<Vector2Int> BlockedCells { get; private set; } = new HashSet<Vector2Int>();
+    private Dictionary<Vector2Int, GameObject> blockedOverlays = new Dictionary<Vector2Int, GameObject>();
+
+    // ✅ BoardManager check trước khi move
+    public bool IsNightModeActive => nightModeActive;
 
     private BoardManager boardManager;
 
@@ -45,6 +57,9 @@ public class NightModeHazard : MonoBehaviour
 
         if (tapProgressBar != null)
             tapProgressBar.gameObject.SetActive(false);
+
+        // ✅ Ẩn fog
+        fogController?.Hide();
     }
 
     private void Update()
@@ -66,16 +81,33 @@ public class NightModeHazard : MonoBehaviour
         BlockedCells.Clear();
         activeHands.Clear();
 
-        // Fade in overlay
+        // ✅ Giảm overlay từ 0.75 → 0.4
         if (nightOverlayImage != null)
         {
             nightOverlayImage.gameObject.SetActive(true);
-            nightOverlayImage.raycastTarget = false; // ✅ không block input
+            nightOverlayImage.raycastTarget = false;
             float t = 0f;
             while (t < 1f)
             {
                 t += Time.deltaTime / 1.5f;
-                nightOverlayImage.color = new Color(0, 0, 0, Mathf.Lerp(0f, 0.75f, t));
+                nightOverlayImage.color = new Color(0, 0, 0, Mathf.Lerp(0f, 0.4f, t));
+                yield return null;
+            }
+        }
+
+        // ✅ Fog màu xanh/trắng mờ thay vì tối
+        if (fogController != null)
+        {
+            fogController.Show();
+            fogController.SetSpeed(0.03f, 0.01f);
+            fogController.SetSize(3f);
+            fogController.SetColor(new Color(0.6f, 0.8f, 1f, 1f)); // xanh nhạt
+
+            float t = 0f;
+            while (t < 1f)
+            {
+                t += Time.deltaTime / 2f;
+                fogController.SetOpacity(Mathf.Lerp(0f, 0.5f, t)); // ✅ max 0.5 thay vì 0.8
                 yield return null;
             }
         }
@@ -89,6 +121,10 @@ public class NightModeHazard : MonoBehaviour
             tapProgressBar.gameObject.SetActive(true);
             tapProgressBar.fillAmount = 0f;
         }
+
+        // ✅ Vòng lặp penalty: cứ 5 giây không tap đủ → block 1 ô
+        tapsAtLastCheck = 0;
+        StartCoroutine(PenaltyLoop());
 
         // Chờ đủ tap
         while (currentTaps < tapsToDismiss)
@@ -178,13 +214,81 @@ public class NightModeHazard : MonoBehaviour
             tapProgressBar.fillAmount = (float)currentTaps / tapsToDismiss;
     }
 
+    // ✅ Cứ 5 giây kiểm tra tap, nếu không đủ → block thêm 1 ô
+    private IEnumerator PenaltyLoop()
+    {
+        int tapsRequired = 10; 
+
+        while (nightModeActive)
+        {
+            int tapsBefore = currentTaps;
+            yield return new WaitForSeconds(tapTimeLimit);
+
+            if (!nightModeActive) yield break;
+
+            int tapsInInterval = currentTaps - tapsBefore;
+            if (tapsInInterval < tapsRequired)
+            {
+                // Block thêm 1 ô ngẫu nhiên chưa bị block
+                BlockRandomCell();
+            }
+        }
+    }
+
+    private void BlockRandomCell()
+    {
+        if (boardManager == null) return;
+
+        // Tìm các ô chưa bị block
+        List<Vector2Int> available = new List<Vector2Int>();
+        for (int x = 0; x < 4; x++)
+            for (int y = 0; y < 4; y++)
+            {
+                Vector2Int cell = new Vector2Int(x, y);
+                if (!BlockedCells.Contains(cell))
+                    available.Add(cell);
+            }
+
+        if (available.Count == 0) return;
+
+        // Chọn ngẫu nhiên 1 ô
+        Vector2Int blocked = available[Random.Range(0, available.Count)];
+        BlockedCells.Add(blocked);
+
+        Debug.Log($"⛔ Blocked cell {blocked}");
+
+        // Hiện overlay đỏ trên ô bị block
+        if (blockedCellOverlayPrefab != null)
+        {
+            Transform parent = handParent != null ? handParent : transform;
+            Vector3 worldPos = boardManager.GetCellWorldPos(blocked.x, blocked.y);
+            GameObject overlay = Instantiate(blockedCellOverlayPrefab, parent);
+            RectTransform rect = overlay.GetComponent<RectTransform>();
+            if (rect != null) rect.position = worldPos;
+            blockedOverlays[blocked] = overlay;
+        }
+    }
+
     private IEnumerator DismissNightMode()
     {
-        // Animate tay ra
         foreach (var hand in activeHands)
+            if (hand != null) StartCoroutine(AnimateHandOut(hand.transform));
+
+        // ✅ Xoá blocked overlays
+        foreach (var overlay in blockedOverlays.Values)
+            if (overlay != null) Destroy(overlay);
+        blockedOverlays.Clear();
+
+        if (fogController != null)
         {
-            if (hand != null)
-                StartCoroutine(AnimateHandOut(hand.transform));
+            float t = 0f;
+            while (t < 1f)
+            {
+                t += Time.deltaTime;
+                fogController.SetOpacity(Mathf.Lerp(0.5f, 0f, t)); // ✅ từ 0.5
+                yield return null;
+            }
+            fogController.Hide();
         }
 
         yield return new WaitForSeconds(0.5f);
