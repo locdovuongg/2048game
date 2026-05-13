@@ -34,7 +34,7 @@ public class GameOverUI : MonoBehaviour
         panel.SetActive(false);
 
         if (watchAdButton != null) watchAdButton.onClick.AddListener(OnWatchAd);
-        if (restartButton != null) restartButton.onClick.AddListener(OnRestart);
+        if (restartButton != null) restartButton.onClick.AddListener(OnShuffle);
         if (homeButton != null)    homeButton.onClick.AddListener(OnHome);
     }
 
@@ -65,23 +65,25 @@ public class GameOverUI : MonoBehaviour
 
     private void OnWatchAd()
     {
-        StartCoroutine(SimulateAd());
-    }
-
-    private IEnumerator SimulateAd()
-    {
-        watchAdButton.interactable = false;
+        if (watchAdButton != null) watchAdButton.interactable = false;
         if (adButtonText != null) adButtonText.text = "Loading...";
 
-        yield return new WaitForSecondsRealtime(2f);
-
-        adUsed = true;
-        HideGameOver();
-
-        yield return null;
-
-        boardManager.DestroyLowestTile();
-        boardManager.ResumeGame();
+        // ✅ Dùng AdMob thay vì giả lập
+        AdsManager.Instance?.ShowRewardedAd(
+            onRewarded: () =>
+            {
+                adUsed = true;
+                HideGameOver();
+                boardManager.DestroyLowestTile();
+                boardManager.ResumeGame();
+            },
+            onFailed: () =>
+            {
+                // Khôi phục nút nếu ad fail
+                if (watchAdButton != null) watchAdButton.interactable = true;
+                if (adButtonText != null) adButtonText.text = "Watch Ad\nContinue";
+            }
+        );
     }
 
     private void OnRestart()
@@ -99,5 +101,13 @@ public class GameOverUI : MonoBehaviour
         IsGameOver = false;
         Time.timeScale = 1f;
         SceneManager.LoadScene("MainMenu");
+    }
+
+    private void OnShuffle()
+    {
+        adUsed = false;
+        HideGameOver();
+        boardManager.ResumeGame();
+        boardManager.ShuffleBoard();
     }
 }

@@ -50,17 +50,25 @@ public class BoardManager : MonoBehaviour
         NightModeHazard.Instance?.Init(this);
     }
 
+    // ✅ Public để SwipeInput gọi
+    public void Move(Vector2Int direction)
+    {
+        if (isAnimating) return;
+        if (GameOverUI.Instance != null && GameOverUI.Instance.IsGameOver) return;
+        StartCoroutine(MoveCoroutine(direction));
+    }
+
     private void Update()
     {
         if (isAnimating) return;
-        if (Input.GetKeyDown(KeyCode.A)) StartCoroutine(MoveCoroutine(Vector2Int.left));
-        if (Input.GetKeyDown(KeyCode.D)) StartCoroutine(MoveCoroutine(Vector2Int.right));
-        if (Input.GetKeyDown(KeyCode.W)) StartCoroutine(MoveCoroutine(Vector2Int.up));
-        if (Input.GetKeyDown(KeyCode.S)) StartCoroutine(MoveCoroutine(Vector2Int.down));
-        if (Input.GetKeyDown(KeyCode.Z)) Undo();
+        if (GameOverUI.Instance != null && GameOverUI.Instance.IsGameOver) return;
 
-        if (Input.GetMouseButtonDown(0))
-            NightModeHazard.Instance?.RegisterTap();
+        // ✅ Keyboard vẫn giữ để test trên Editor
+        if (Input.GetKeyDown(KeyCode.A) || Input.GetKeyDown(KeyCode.LeftArrow))  Move(Vector2Int.left);
+        if (Input.GetKeyDown(KeyCode.D) || Input.GetKeyDown(KeyCode.RightArrow)) Move(Vector2Int.right);
+        if (Input.GetKeyDown(KeyCode.W) || Input.GetKeyDown(KeyCode.UpArrow))    Move(Vector2Int.up);
+        if (Input.GetKeyDown(KeyCode.S) || Input.GetKeyDown(KeyCode.DownArrow))  Move(Vector2Int.down);
+        if (Input.GetKeyDown(KeyCode.Z)) Undo();
     }
 
     // ✅ Thêm GetCellRect để LightningHazard dùng
@@ -582,5 +590,70 @@ public class BoardManager : MonoBehaviour
                 if (y + 1 < height && grid[x, y + 1] == grid[x, y]) return true;
             }
         return false;
+    }
+
+    public void ShuffleBoard()
+    {
+        StopAllCoroutines();
+        isAnimating = false;
+
+        // ✅ Lấy tất cả giá trị đang có
+        var values = new List<int>();
+        for (int x = 0; x < width; x++)
+            for (int y = 0; y < height; y++)
+                if (grid[x, y] > 0)
+                    values.Add(grid[x, y]);
+
+        // ✅ Xoá hết tile cũ
+        for (int x = 0; x < width; x++)
+            for (int y = 0; y < height; y++)
+            {
+                if (tileUIs[x, y] != null)
+                {
+                    Destroy(tileUIs[x, y].gameObject);
+                    tileUIs[x, y] = null;
+                }
+                grid[x, y] = 0;
+            }
+
+        // ✅ Shuffle danh sách giá trị
+        for (int i = values.Count - 1; i > 0; i--)
+        {
+            int j = Random.Range(0, i + 1);
+            (values[i], values[j]) = (values[j], values[i]);
+        }
+
+        // ✅ Random vị trí trống để đặt lại
+        var emptyPositions = new List<Vector2Int>();
+        for (int x = 0; x < width; x++)
+            for (int y = 0; y < height; y++)
+                emptyPositions.Add(new Vector2Int(x, y));
+
+        // Shuffle vị trí
+        for (int i = emptyPositions.Count - 1; i > 0; i--)
+        {
+            int j = Random.Range(0, i + 1);
+            (emptyPositions[i], emptyPositions[j]) = (emptyPositions[j], emptyPositions[i]);
+        }
+
+        // ✅ Đặt tile vào vị trí mới
+        for (int i = 0; i < values.Count; i++)
+        {
+            int x = emptyPositions[i].x;
+            int y = emptyPositions[i].y;
+            grid[x, y] = values[i];
+            SpawnTileAt(x, y, values[i]);
+        }
+
+        Debug.Log($"✅ Shuffled {values.Count} tiles");
+    }
+
+    private void SpawnTileAt(int x, int y, int value)
+    {
+        TileUI tile = Instantiate(tilePrefab, tileParent);
+        tile.transform.position = GetCellWorldPosition(x, y);
+        tile.Setup(value);
+        tileUIs[x, y] = tile;
+        StartCoroutine(SpawnAnimation(tile.transform));
     }
 }
