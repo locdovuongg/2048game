@@ -77,6 +77,10 @@ public class NightModeHazard : MonoBehaviour
     private IEnumerator TriggerNightMode()
     {
         nightModeActive = true;
+
+        // ✅ Báo BoardManager phát nhạc night mode
+        boardManager?.PlayNightModeSound();
+
         currentTaps = 0;
         BlockedCells.Clear();
         activeHands.Clear();

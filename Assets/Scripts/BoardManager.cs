@@ -17,6 +17,14 @@ public class BoardManager : MonoBehaviour
     [Header("Animation")]
     [SerializeField] private float moveDuration = 0.1f;
 
+    [Header("Audio")]
+    [SerializeField] private AudioSource audioSource;
+    [SerializeField] private AudioClip moveClip;
+    [SerializeField] private AudioClip mergeClip;
+    [SerializeField] private AudioClip lightningClip;
+    [SerializeField] private AudioClip nightModeClip;
+    [SerializeField] private AudioClip gameOverClip;
+
     private int[,] grid;
     private TileUI[,] tileUIs;
     private bool isAnimating = false;
@@ -74,6 +82,9 @@ public class BoardManager : MonoBehaviour
             tileUIs[x, y] = null;
         }
         grid[x, y] = 0;
+
+        // ✅ Âm sét đánh
+        PlaySFX(lightningClip);
         PrintBoard();
     }
 
@@ -135,44 +146,50 @@ public class BoardManager : MonoBehaviour
         SaveState();
         isAnimating = true;
 
+        // ✅ Âm di chuyển
+        bool hasMerge = false;
         foreach (var move in moves)
+        {
             StartCoroutine(AnimateTile(move.tileUI, move.targetWorldPos, moveDuration));
+            if (move.isMerge) hasMerge = true;
+        }
+
+        // ✅ Play move hoặc merge sound
+        if (hasMerge)
+            PlaySFX(mergeClip);
+        else
+            PlaySFX(moveClip);
 
         yield return new WaitForSeconds(moveDuration);
 
         ApplyMoves(moves);
 
-        // Reset lightning timer cho tile đã di chuyển
         foreach (var move in moves)
             LightningHazard.Instance?.ResetTimer(move.toX, move.toY);
 
-        // 4. Bounce animation cho các tile vừa merge
-         foreach (var move in moves)
-    {
-        if (move.isMerge)
+        foreach (var move in moves)
         {
-            // ✅ Kiểm tra tile còn tồn tại trước khi gọi Setup
-            if (move.tileUI != null)
+            if (move.isMerge)
             {
-                move.tileUI.Setup(move.mergedValue);
-                StartCoroutine(BounceAnimation(move.tileUI.transform));
+                if (move.tileUI != null)
+                {
+                    move.tileUI.Setup(move.mergedValue);
+                    StartCoroutine(BounceAnimation(move.tileUI.transform));
+                }
+
+                GameManager.Instance.AddScore(move.mergedValue);
+                GameManager.Instance.CheckWin(move.mergedValue);
             }
-
-            GameManager.Instance.AddScore(move.mergedValue);
-            GameManager.Instance.CheckWin(move.mergedValue);
         }
-    }
 
-        // 5. Spawn tile mới với spawn animation
         SpawnRandomTile();
         SpawnNewTileWithAnimation();
         PrintBoard();
 
         yield return new WaitForSeconds(0.15f);
 
-        // ✅ Thêm game over check
         if (IsGameOver())
-            GameManager.Instance.TriggerGameOver();
+            TriggerGameOver();
 
         isAnimating = false;
     }
@@ -501,8 +518,7 @@ public class BoardManager : MonoBehaviour
     public void ResumeGame()
     {
         isAnimating = false;
-        StopAllCoroutines(); // clear coroutine cũ nếu bị kẹt
-        Debug.Log("✅ Board resumed");
+        Debug.Log("✅ Game resumed");
     }
 
     public void TriggerGameOver()
@@ -515,9 +531,23 @@ public class BoardManager : MonoBehaviour
             PlayerPrefs.SetInt("BestScore", best);
         }
 
-        // ✅ Dừng nhận input trước khi show GameOver
+        // ✅ Âm game over
+        PlaySFX(gameOverClip);
+
         isAnimating = true;
         GameOverUI.Instance?.ShowGameOver(score, best);
+    }
+
+    // ✅ Gọi từ NightModeHazard khi bật night mode
+    public void PlayNightModeSound()
+    {
+        PlaySFX(nightModeClip);
+    }
+
+    private void PlaySFX(AudioClip clip)
+    {
+        if (audioSource != null && clip != null)
+            audioSource.PlayOneShot(clip);
     }
 
     public void DestroyLowestTile()
@@ -534,6 +564,8 @@ public class BoardManager : MonoBehaviour
                 }
 
         if (minX == -1) return;
+
+        Debug.Log($"🗑️ Destroy ô thấp nhất [{minX},{minY}] giá trị={minVal}");
         DestroyTile(minX, minY);
 
         if (!HasValidMoves())
@@ -546,28 +578,9 @@ public class BoardManager : MonoBehaviour
             for (int y = 0; y < height; y++)
             {
                 if (grid[x, y] == 0) return true;
-                if (x + 1 < width && grid[x + 1, y] == grid[x, y]) return true;
+                if (x + 1 < width  && grid[x + 1, y] == grid[x, y]) return true;
                 if (y + 1 < height && grid[x, y + 1] == grid[x, y]) return true;
             }
         return false;
-    }
-
-    public void RestartGame()
-    {
-        for (int x = 0; x < width; x++)
-            for (int y = 0; y < height; y++)
-            {
-                if (tileUIs[x, y] != null)
-                {
-                    Destroy(tileUIs[x, y].gameObject);
-                    tileUIs[x, y] = null;
-                }
-                grid[x, y] = 0;
-            }
-
-        GameManager.Instance.SetScore(0); // ✅ reset score qua GameManager
-        SpawnRandomTile();
-        SpawnRandomTile();
-        RenderBoard();
     }
 }

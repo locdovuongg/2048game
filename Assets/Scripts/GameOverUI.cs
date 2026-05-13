@@ -1,20 +1,26 @@
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.SceneManagement;
 using TMPro;
 
 public class GameOverUI : MonoBehaviour
 {
     public static GameOverUI Instance { get; private set; }
 
+    public bool IsGameOver { get; private set; } = false;
+
     [Header("References")]
     [SerializeField] private GameObject panel;
     [SerializeField] private TMP_Text scoreText;
+    [SerializeField] private TMP_Text bestScoreText;
+    [SerializeField] private TMP_Text adButtonText;
     [SerializeField] private Button watchAdButton;
     [SerializeField] private Button restartButton;
+    [SerializeField] private Button homeButton;
 
     private BoardManager boardManager;
-    private bool adUsed = false; // chỉ cho xem ad 1 lần
+    private bool adUsed = false;
 
     private void Awake()
     {
@@ -27,41 +33,55 @@ public class GameOverUI : MonoBehaviour
         boardManager = FindFirstObjectByType<BoardManager>();
         panel.SetActive(false);
 
-        watchAdButton.onClick.AddListener(OnWatchAd);
-        restartButton.onClick.AddListener(OnRestart);
+        if (watchAdButton != null) watchAdButton.onClick.AddListener(OnWatchAd);
+        if (restartButton != null) restartButton.onClick.AddListener(OnRestart);
+        if (homeButton != null)    homeButton.onClick.AddListener(OnHome);
     }
 
     public void ShowGameOver(int score, int bestScore)
     {
+        IsGameOver = true;
         panel.SetActive(true);
-        scoreText.text = $"SCORE\n{score}";
 
-        // ✅ Chỉ cho xem ad 1 lần
-        watchAdButton.gameObject.SetActive(!adUsed);
+        if (scoreText != null)     scoreText.text     = $"SCORE\n{score}";
+        if (bestScoreText != null) bestScoreText.text  = $"BEST\n{bestScore}";
 
-        Time.timeScale = 0f; // dừng game
+        if (watchAdButton != null)
+        {
+            watchAdButton.gameObject.SetActive(!adUsed);
+            watchAdButton.interactable = true;
+        }
+        if (adButtonText != null) adButtonText.text = "Watch Ad\nContinue";
+
+        Time.timeScale = 0f;
+    }
+
+    public void HideGameOver()
+    {
+        IsGameOver = false;
+        panel.SetActive(false);
+        Time.timeScale = 1f;
     }
 
     private void OnWatchAd()
     {
-        // ✅ Giả lập xem ad xong
         StartCoroutine(SimulateAd());
     }
 
     private IEnumerator SimulateAd()
     {
         watchAdButton.interactable = false;
+        if (adButtonText != null) adButtonText.text = "Loading...";
 
-        yield return new WaitForSecondsRealtime(2f); // ✅ dùng Realtime vì timeScale = 0
+        yield return new WaitForSecondsRealtime(2f);
 
         adUsed = true;
+        HideGameOver();
 
-        HideGameOver(); // ✅ restore timeScale = 1f TRƯỚC
+        yield return null;
 
-        yield return null; // đợi 1 frame
-
-        boardManager.DestroyLowestTile(); // ✅ destroy SAU khi resume
-        boardManager.ResumeGame();        // ✅ reset trạng thái board
+        boardManager.DestroyLowestTile();
+        boardManager.ResumeGame();
     }
 
     private void OnRestart()
@@ -69,12 +89,15 @@ public class GameOverUI : MonoBehaviour
         adUsed = false;
         HideGameOver();
         boardManager.ResumeGame();
-        boardManager.RestartGame();
+        boardManager.RestartBoard();
+        GameManager.Instance?.SetScore(0);
     }
 
-    public void HideGameOver()
+    private void OnHome()
     {
-        panel.SetActive(false);
-        Time.timeScale = 1f; // ✅ resume time
+        adUsed = false;
+        IsGameOver = false;
+        Time.timeScale = 1f;
+        SceneManager.LoadScene("MainMenu");
     }
 }

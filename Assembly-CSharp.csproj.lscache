@@ -56,6 +56,7 @@ Assets/Scripts/
  GameManager.cs
  GameOverUI.cs
  LightningHazard.cs
+ MainMenu.cs
  NightModeHazard.cs
  Tile.cs
  TileUI.cs
@@ -434,6 +435,8 @@ Library/ScriptAssemblies/
  Unity.VisualStudio.Editor.dll
  UnityEditor.UI.Analytics.dll
  UnityEditor.UI.dll
+ UnityEngine.Advertisements.dll
+ UnityEngine.Advertisements.Editor.dll
  UnityEngine.UI.dll
 
 [analyzerReferences]
