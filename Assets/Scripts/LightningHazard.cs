@@ -33,14 +33,28 @@ public class LightningHazard : MonoBehaviour
         boardManager = bm;
         initialized = true;
 
-        // ✅ Debug in ra tất cả cell positions để kiểm tra
-        for (int i = 0; i < cellTransforms.Length; i++)
+        // ✅ Điều chỉnh theo độ khó
+        int difficulty = PlayerPrefs.GetInt("Difficulty", 1);
+        switch (difficulty)
         {
-            if (cellTransforms[i] != null)
-                Debug.Log($"Cell[{i}] name={cellTransforms[i].name} pos={cellTransforms[i].position}");
+            case 0: // Easy → tắt hoàn toàn
+                gameObject.SetActive(false);
+                Debug.Log("⚡ LightningHazard OFF (Easy)");
+                return;
+            case 1: // Normal → chậm
+                intervalBetweenStrikes = 90f;
+                warningDuration        = 6f;
+                Debug.Log("⚡ LightningHazard NORMAL");
+                break;
+            case 2: // Hard → nhanh
+                intervalBetweenStrikes = 40f;
+                warningDuration        = 4f;
+                Debug.Log("⚡ LightningHazard HARD");
+                break;
         }
 
         StartCoroutine(StrikeLoop());
+        Debug.Log("✅ LightningHazard Init OK");
     }
 
     public void ResetTimer(int x, int y) { }

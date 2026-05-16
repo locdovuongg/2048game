@@ -34,8 +34,12 @@ public class BoardManager : MonoBehaviour
     private int previousScore;
     private bool canUndo = false;
 
+    private int difficulty; // ✅ chỉ khai báo field
+
     private void Start()
     {
+        difficulty = PlayerPrefs.GetInt("Difficulty", 1); // ✅ đọc trong Start
+
         if (cellTransforms == null || cellTransforms.Length != width * height)
             Debug.LogWarning("cellTransforms length does not match width*height");
 

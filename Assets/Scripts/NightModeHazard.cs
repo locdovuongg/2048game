@@ -62,6 +62,27 @@ public class NightModeHazard : MonoBehaviour
         fogController?.Hide();
     }
 
+    private void Start()
+    {
+        // ✅ Điều chỉnh theo độ khó
+        int difficulty = PlayerPrefs.GetInt("Difficulty", 1);
+        switch (difficulty)
+        {
+            case 0: // Easy → tắt
+                gameObject.SetActive(false);
+                Debug.Log("🌙 NightMode OFF (Easy)");
+                return;
+            case 1: // Normal → chậm
+                nightTriggerTime = 120f;
+                Debug.Log("🌙 NightMode NORMAL");
+                break;
+            case 2: // Hard → nhanh
+                nightTriggerTime = 60f;
+                Debug.Log("🌙 NightMode HARD");
+                break;
+        }
+    }
+
     private void Update()
     {
         if (nightTriggered) return;

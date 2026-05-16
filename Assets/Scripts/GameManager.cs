@@ -84,4 +84,9 @@ public class GameManager : MonoBehaviour
         Score = value;
         UpdateScoreUI();
     }
+
+    private void Update()
+    {
+        int difficulty = PlayerPrefs.GetInt("Difficulty", 1);
+    }
 }
