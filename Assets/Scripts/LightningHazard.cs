@@ -9,12 +9,12 @@ public class LightningHazard : MonoBehaviour
     public static LightningHazard Instance { get; private set; }
 
     [Header("Settings")]
-    [SerializeField] private float intervalBetweenStrikes = 20f; // test: 20s
+    [SerializeField] private float intervalBetweenStrikes = 20f; 
     [SerializeField] private float warningDuration = 5f;
 
     [Header("References - Kéo vào Inspector")]
-    [SerializeField] private RectTransform[] cellTransforms; // ✅ kéo 16 cells từ Board vào
-    [SerializeField] private Transform warningParent;        // ✅ kéo TileParent vào
+    [SerializeField] private RectTransform[] cellTransforms; 
+    [SerializeField] private Transform warningParent;       
 
     private BoardManager boardManager;
     private int width = 4, height = 4;
@@ -33,28 +33,28 @@ public class LightningHazard : MonoBehaviour
         boardManager = bm;
         initialized = true;
 
-        // ✅ Điều chỉnh theo độ khó
+    
         int difficulty = PlayerPrefs.GetInt("Difficulty", 1);
         switch (difficulty)
         {
             case 0: // Easy → tắt hoàn toàn
                 gameObject.SetActive(false);
-                Debug.Log("⚡ LightningHazard OFF (Easy)");
+               
                 return;
             case 1: // Normal → chậm
                 intervalBetweenStrikes = 90f;
                 warningDuration        = 6f;
-                Debug.Log("⚡ LightningHazard NORMAL");
+              
                 break;
             case 2: // Hard → nhanh
                 intervalBetweenStrikes = 40f;
                 warningDuration        = 4f;
-                Debug.Log("⚡ LightningHazard HARD");
+             
                 break;
         }
 
         StartCoroutine(StrikeLoop());
-        Debug.Log("✅ LightningHazard Init OK");
+       
     }
 
     public void ResetTimer(int x, int y) { }
@@ -76,12 +76,12 @@ public class LightningHazard : MonoBehaviour
 
             if (candidates.Count == 0)
             {
-                Debug.Log("⚠️ Không có tile nào để đánh!");
+              
                 continue;
             }
 
             Vector2Int target = candidates[Random.Range(0, candidates.Count)];
-            Debug.Log($"⚡ Nhắm ô [{target.x},{target.y}] giá trị={grid[target.x, target.y]}");
+          
             StartCoroutine(StrikeCountdown(target.x, target.y));
         }
     }
@@ -110,7 +110,7 @@ public class LightningHazard : MonoBehaviour
         textObj.transform.SetParent(obj.transform, false);
 
         TMP_Text txt = textObj.AddComponent<TextMeshProUGUI>();
-        // ✅ Bỏ emoji ⚡, dùng text thường
+      
         txt.text = $"!\n{Mathf.CeilToInt(warningDuration)}";
         txt.fontSize = 60;
         txt.fontStyle = FontStyles.Bold;
@@ -130,7 +130,7 @@ public class LightningHazard : MonoBehaviour
     private IEnumerator StrikeCountdown(int x, int y)
     {
         RectTransform cellRect = boardManager.GetCellRect(x, y);
-        if (cellRect == null) { Debug.LogError($"❌ GetCellRect({x},{y}) null!"); yield break; }
+        if (cellRect == null) { Debug.LogError($" GetCellRect({x},{y}) null!"); yield break; }
 
         GameObject warning = CreateWarningUI(cellRect);
         TMP_Text countdownText = warning.GetComponentInChildren<TMP_Text>();
@@ -152,7 +152,7 @@ public class LightningHazard : MonoBehaviour
                 if (warning) warning.SetActive(visible);
             }
 
-            // ✅ Không dùng emoji
+          
             if (countdownText != null)
                 countdownText.text = $"!\n{Mathf.CeilToInt(warningDuration - elapsed)}";
 

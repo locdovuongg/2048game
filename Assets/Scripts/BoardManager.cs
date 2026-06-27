@@ -1,6 +1,5 @@
 using System.Collections;
 using System.Collections.Generic;
-using System.Text;
 using UnityEngine;
 
 public class BoardManager : MonoBehaviour
@@ -13,6 +12,12 @@ public class BoardManager : MonoBehaviour
     [Header("Board Size")]
     [SerializeField] private int width = 4;
     [SerializeField] private int height = 4;
+
+    [Header("Confirm Popup")]
+    [SerializeField] private GameObject confirmPopup;
+    [SerializeField] private TMPro.TMP_Text confirmMessageText;
+    [SerializeField] private UnityEngine.UI.Button confirmYesButton;
+    [SerializeField] private UnityEngine.UI.Button confirmNoButton;
 
     [Header("Animation")]
     [SerializeField] private float moveDuration = 0.1f;
@@ -34,15 +39,20 @@ public class BoardManager : MonoBehaviour
     private int previousScore;
     private bool canUndo = false;
 
-    private int difficulty; // ✅ chỉ khai báo field
+    private int difficulty;
+
+    // Gioi han luot dung
+    private bool undoFreeUsed    = false;
+    private bool undoAdUsed      = false;
+    private bool shuffleFreeUsed = false;
+    private bool shuffleAdUsed   = false;
+
+    private System.Action pendingConfirmAction;
 
     private void Start()
     {
-        difficulty = PlayerPrefs.GetInt("Difficulty", 1); // ✅ đọc trong Start
-
-        if (cellTransforms == null || cellTransforms.Length != width * height)
-            Debug.LogWarning("cellTransforms length does not match width*height");
-
+        difficulty = PlayerPrefs.GetInt("Difficulty", 1);
+        if (confirmPopup != null) confirmPopup.SetActive(false);
         StartCoroutine(InitAfterLayout());
     }
 
@@ -54,7 +64,6 @@ public class BoardManager : MonoBehaviour
         NightModeHazard.Instance?.Init(this);
     }
 
-    // ✅ Public để SwipeInput gọi
     public void Move(Vector2Int direction)
     {
         if (isAnimating) return;
@@ -67,22 +76,19 @@ public class BoardManager : MonoBehaviour
         if (isAnimating) return;
         if (GameOverUI.Instance != null && GameOverUI.Instance.IsGameOver) return;
 
-        // ✅ Keyboard vẫn giữ để test trên Editor
         if (Input.GetKeyDown(KeyCode.A) || Input.GetKeyDown(KeyCode.LeftArrow))  Move(Vector2Int.left);
         if (Input.GetKeyDown(KeyCode.D) || Input.GetKeyDown(KeyCode.RightArrow)) Move(Vector2Int.right);
         if (Input.GetKeyDown(KeyCode.W) || Input.GetKeyDown(KeyCode.UpArrow))    Move(Vector2Int.up);
         if (Input.GetKeyDown(KeyCode.S) || Input.GetKeyDown(KeyCode.DownArrow))  Move(Vector2Int.down);
-        if (Input.GetKeyDown(KeyCode.Z)) Undo();
+        if (Input.GetKeyDown(KeyCode.Z)) OnClickUndo();
     }
 
-    // ✅ Thêm GetCellRect để LightningHazard dùng
     public RectTransform GetCellRect(int x, int y)
     {
         int index = (height - 1 - y) * width + x;
         return cellTransforms[index];
     }
 
-    // ✅ Expose để Hazard scripts dùng
     public Vector3 GetCellWorldPos(int x, int y) => GetCellWorldPosition(x, y);
 
     // ✅ Sét đánh xoá tile
@@ -94,20 +100,16 @@ public class BoardManager : MonoBehaviour
             tileUIs[x, y] = null;
         }
         grid[x, y] = 0;
-
-        // ✅ Âm sét đánh
         PlaySFX(lightningClip);
-        PrintBoard();
     }
 
     void InitializeBoard()
     {
-        grid = new int[width, height];
+        grid    = new int[width, height];
         tileUIs = new TileUI[width, height];
         SpawnRandomTile();
         SpawnRandomTile();
         RenderBoard();
-        PrintBoard();
     }
 
     Vector3 GetCellWorldPosition(int x, int y)
@@ -137,10 +139,10 @@ public class BoardManager : MonoBehaviour
                 if (existing == null)
                 {
                     TileUI tile = Instantiate(tilePrefab, tileParent);
-                    tile.transform.position = GetCellWorldPosition(x, y);
-                    tile.transform.localScale = Vector3.one; // ✅ reset scale
-                    tileUIs[x, y] = tile;
-                    existing = tile;
+        tile.transform.position = GetCellWorldPosition(x, y);
+        tile.transform.localScale = Vector3.one;
+        tileUIs[x, y] = tile;
+        existing = tile;
                 }
 
                 existing.Setup(value);
@@ -158,7 +160,6 @@ public class BoardManager : MonoBehaviour
         SaveState();
         isAnimating = true;
 
-        // ✅ Âm di chuyển
         bool hasMerge = false;
         foreach (var move in moves)
         {
@@ -166,11 +167,7 @@ public class BoardManager : MonoBehaviour
             if (move.isMerge) hasMerge = true;
         }
 
-        // ✅ Play move hoặc merge sound
-        if (hasMerge)
-            PlaySFX(mergeClip);
-        else
-            PlaySFX(moveClip);
+        PlaySFX(hasMerge ? mergeClip : moveClip);
 
         yield return new WaitForSeconds(moveDuration);
 
@@ -196,7 +193,6 @@ public class BoardManager : MonoBehaviour
 
         SpawnRandomTile();
         SpawnNewTileWithAnimation();
-        PrintBoard();
 
         yield return new WaitForSeconds(0.15f);
 
@@ -208,33 +204,141 @@ public class BoardManager : MonoBehaviour
 
     private void SaveState()
     {
-        previousGrid = (int[,])grid.Clone();
-        previousTileUIs = (TileUI[,])tileUIs.Clone();
-        previousScore = GameManager.Instance.Score; // cần expose Score
-        canUndo = true;
+        previousGrid  = (int[,])grid.Clone();
+        previousScore = GameManager.Instance.Score;
+        canUndo       = true;
     }
+
+    public void OnClickUndo()
+    {
+        if (!canUndo)
+        {
+            Debug.Log("Khong co gi de Undo");
+            return;
+        }
+
+        if (!undoFreeUsed)
+        {
+            ShowConfirmPopup("Bạn có chắc muốn hoàn tác?", () =>
+            {
+                undoFreeUsed = true;
+                Undo();
+            });
+            return;
+        }
+
+        if (!undoAdUsed)
+        {
+            ShowConfirmPopup("Đã hết lượt miễn phí.\nXem quảng cáo để hoàn tác?", () =>
+            {
+                AdsManager.Instance?.ShowRewardedAd(
+                    onRewarded: () => { undoAdUsed = true; Undo(); },
+                    onFailed:   () => Debug.Log("Ad thất bại")
+                );
+            });
+            return;
+        }
+
+        Debug.Log("Đã hết lượt Undo");
+    }
+
+    public void OnClickShuffle()
+    {
+        if (!shuffleFreeUsed)
+        {
+            ShowConfirmPopup("Bạn có chắc muốn xáo trộn?", () =>
+            {
+                shuffleFreeUsed = true;
+                ShuffleBoard();
+            });
+            return;
+        }
+
+        if (!shuffleAdUsed)
+        {
+            ShowConfirmPopup("Đã hết lượt miễn phí.\nXem quảng cáo để xáo trộn?", () =>
+            {
+                AdsManager.Instance?.ShowRewardedAd(
+                    onRewarded: () => { shuffleAdUsed = true; ShuffleBoard(); },
+                    onFailed:   () => Debug.Log("Ad thất bại")
+                );
+            });
+            return;
+        }
+
+        Debug.Log("Đã hết lượt Shuffle");
+    }
+
+    public void OnClickRestart()
+    {
+        ShowConfirmPopup("Ban co chac muon Restart?", () =>
+        {
+            GameManager.Instance?.SetScore(0);
+            RestartBoard();
+        });
+    }
+
+    public void OnClickHome()
+    {
+        if (confirmPopup == null)
+        {
+            Debug.LogWarning("confirmPopup chua gan trong Inspector!");
+            return;
+        }
+
+        pendingConfirmAction = () =>
+        {
+            Time.timeScale = 1f;
+            UnityEngine.SceneManagement.SceneManager.LoadScene("MainMenu");
+        };
+
+        if (confirmMessageText != null)
+            confirmMessageText.text = "Bạn có chắc muốn về Main Menu?";
+
+        confirmPopup.SetActive(true);
+    }
+
+    private void ShowConfirmPopup(string message, System.Action onConfirm)
+    {
+        if (confirmPopup == null)
+        {
+            Debug.LogWarning("confirmPopup chua gan trong Inspector!");
+            return; 
+        }
+
+        pendingConfirmAction = onConfirm;
+        if (confirmMessageText != null) confirmMessageText.text = message;
+        confirmPopup.SetActive(true);
+    }
+
+    public void OnConfirmYes()
+    {
+        if (confirmPopup != null) confirmPopup.SetActive(false);
+        pendingConfirmAction?.Invoke();
+        pendingConfirmAction = null;
+    }
+
+    public void OnConfirmNo()
+    {
+        if (confirmPopup != null) confirmPopup.SetActive(false);
+        pendingConfirmAction = null;
+    }
+    
 
     public void Undo()
     {
         if (!canUndo) return;
         canUndo = false;
 
-        // Xoá tất cả tiles hiện tại
         for (int x = 0; x < width; x++)
             for (int y = 0; y < height; y++)
             {
-                if (tileUIs[x, y] != null)
-                {
-                    Destroy(tileUIs[x, y].gameObject);
-                    tileUIs[x, y] = null;
-                }
+                if (tileUIs[x, y] != null) { Destroy(tileUIs[x, y].gameObject); tileUIs[x, y] = null; }
             }
 
-        // Khôi phục grid
-        grid = (int[,])previousGrid.Clone();
+        grid    = (int[,])previousGrid.Clone();
         tileUIs = new TileUI[width, height];
 
-        // Tạo lại tiles từ state cũ
         for (int x = 0; x < width; x++)
             for (int y = 0; y < height; y++)
             {
@@ -247,8 +351,6 @@ public class BoardManager : MonoBehaviour
                     StartCoroutine(SpawnAnimation(tile.transform));
                 }
             }
-
-        // Khôi phục score
         GameManager.Instance.SetScore(previousScore);
     }
 
@@ -267,110 +369,89 @@ public class BoardManager : MonoBehaviour
 
         return true;
     }
-    
-        public void RestartBoard()
+    public void RestartBoard()
     {
-        isAnimating = false; // ✅ reset nếu đang animate khi restart
         StopAllCoroutines();
+        isAnimating = false;
+        canUndo     = false;
 
         for (int x = 0; x < width; x++)
             for (int y = 0; y < height; y++)
             {
-                if (tileUIs[x, y] != null)
-                {
-                    Destroy(tileUIs[x, y].gameObject);
-                    tileUIs[x, y] = null;
-                }
+                if (tileUIs[x, y] != null) { Destroy(tileUIs[x, y].gameObject); tileUIs[x, y] = null; }
+                grid[x, y] = 0;
             }
+
         InitializeBoard();
+        if (confirmPopup != null) confirmPopup.SetActive(false);
     }
     private IEnumerator AnimateTile(TileUI tile, Vector3 targetPos, float duration)
     {
-        if (tile == null) yield break; // ✅
+        if (tile == null) yield break;
         Vector3 startPos = tile.transform.position;
         float elapsed = 0f;
-
         while (elapsed < duration)
         {
-            if (tile == null) yield break; // ✅
+            if (tile == null) yield break;
             elapsed += Time.deltaTime;
-            float t = Mathf.SmoothStep(0f, 1f, elapsed / duration);
-            tile.transform.position = Vector3.Lerp(startPos, targetPos, t);
+            tile.transform.position = Vector3.Lerp(startPos, targetPos, Mathf.SmoothStep(0f, 1f, elapsed / duration));
             yield return null;
         }
-
-        if (tile != null)
-            tile.transform.position = targetPos;
+        if (tile != null) tile.transform.position = targetPos;
     }
 
     private IEnumerator BounceAnimation(Transform target)
     {
         Vector3 originalScale = Vector3.one;
-        float duration = 0.15f;
-        float elapsed = 0f;
+        float duration = 0.15f, elapsed = 0f;
 
         while (elapsed < duration / 2f)
         {
-            if (target == null) yield break; // ✅
+            if (target == null) yield break;
             elapsed += Time.deltaTime;
-            float t = elapsed / (duration / 2f);
-            target.localScale = Vector3.Lerp(originalScale, originalScale * 1.2f, t);
+            target.localScale = Vector3.Lerp(originalScale, originalScale * 1.2f, elapsed / (duration / 2f));
             yield return null;
         }
-
         elapsed = 0f;
-
         while (elapsed < duration / 2f)
         {
-            if (target == null) yield break; // ✅
+            if (target == null) yield break;
             elapsed += Time.deltaTime;
-            float t = elapsed / (duration / 2f);
-            target.localScale = Vector3.Lerp(originalScale * 1.2f, originalScale, t);
+            target.localScale = Vector3.Lerp(originalScale * 1.2f, originalScale, elapsed / (duration / 2f));
             yield return null;
         }
-
-        if (target != null)
-            target.localScale = originalScale;
+        if (target != null) target.localScale = originalScale;
     }
 
     private void SpawnNewTileWithAnimation()
     {
-        // RenderBoard nhưng chỉ tạo tile mới (chưa có tileUI) và chạy spawn animation
         for (int x = 0; x < width; x++)
+        for (int y = 0; y < height; y++)
         {
-            for (int y = 0; y < height; y++)
+            if (grid[x, y] != 0 && tileUIs[x, y] == null)
             {
-                if (grid[x, y] != 0 && tileUIs[x, y] == null)
-                {
-                    TileUI tile = Instantiate(tilePrefab, tileParent);
-                    tile.transform.position = GetCellWorldPosition(x, y);
-                    tile.transform.localScale = Vector3.zero;
-                    tile.Setup(grid[x, y]);
-                    tileUIs[x, y] = tile;
-                    StartCoroutine(SpawnAnimation(tile.transform));
-                }
+                TileUI tile = Instantiate(tilePrefab, tileParent);
+                tile.transform.position   = GetCellWorldPosition(x, y);
+                tile.transform.localScale = Vector3.zero;
+                tile.Setup(grid[x, y]);
+                tileUIs[x, y] = tile;
+                StartCoroutine(SpawnAnimation(tile.transform));
             }
         }
     }
 
     private IEnumerator SpawnAnimation(Transform target)
     {
-        float duration = 0.15f;
-        float elapsed = 0f;
-
+        if (target == null) yield break;
+        float elapsed = 0f, duration = 0.15f;
         while (elapsed < duration)
         {
-            // ✅ Kiểm tra null trước khi truy cập
             if (target == null) yield break;
-
             elapsed += Time.deltaTime;
-            float t = Mathf.SmoothStep(0f, 1f, elapsed / duration);
-            target.localScale = Vector3.Lerp(Vector3.zero, Vector3.one, t);
+            target.localScale = Vector3.Lerp(Vector3.zero, Vector3.one, Mathf.SmoothStep(0f, 1f, elapsed / duration));
             yield return null;
         }
-
-        if (target != null)
-            target.localScale = Vector3.one;
+        if (target != null) target.localScale = Vector3.one;
     }
 
     // ── CALCULATE MOVES (không thay đổi grid ngay) ──────────────────
@@ -389,7 +470,6 @@ public class BoardManager : MonoBehaviour
         var moves = new List<MoveInfo>();
         anyMoved = false;
 
-        // ✅ Lấy ô bị block từ NightMode
         var blocked = NightModeHazard.Instance?.BlockedCells
             ?? new System.Collections.Generic.HashSet<Vector2Int>();
 
@@ -405,7 +485,6 @@ public class BoardManager : MonoBehaviour
             {
                 if (tempGrid[x, y] == 0) continue;
 
-                // ✅ Tile ở ô bị block không được di chuyển
                 if (blocked.Contains(new Vector2Int(x, y))) continue;
 
                 int currentX = x, currentY = y;
@@ -417,7 +496,6 @@ public class BoardManager : MonoBehaviour
 
                     if (nextX < 0 || nextX >= width || nextY < 0 || nextY >= height) break;
 
-                    // ✅ Không di chuyển vào ô bị block
                     if (blocked.Contains(new Vector2Int(nextX, nextY))) break;
 
                     if (tempGrid[nextX, nextY] == 0)
@@ -507,30 +585,13 @@ public class BoardManager : MonoBehaviour
         return list;
     }
 
-    void PrintBoard()
-    {
-        var sb = new StringBuilder();
-        for (int y = height - 1; y >= 0; y--)
-        {
-            for (int x = 0; x < width; x++)
-                sb.Append(grid[x, y].ToString().PadRight(5));
-            sb.AppendLine();
-        }
-        Debug.Log(sb.ToString());
-    }
-
-    // ✅ Expose grid để LightningHazard đọc
+    void PrintBoard() { }
     public int[,] GetGrid() => grid;
-
-    // ✅ Expose TileParent
     public Transform TileParent => tileParent;
 
-    // ✅ Gọi khi hết nước đi
-    // ✅ Thêm hàm resume để reset trạng thái
     public void ResumeGame()
     {
         isAnimating = false;
-        Debug.Log("✅ Game resumed");
     }
 
     public void TriggerGameOver()
@@ -542,15 +603,12 @@ public class BoardManager : MonoBehaviour
             best = score;
             PlayerPrefs.SetInt("BestScore", best);
         }
-
-        // ✅ Âm game over
         PlaySFX(gameOverClip);
 
         isAnimating = true;
         GameOverUI.Instance?.ShowGameOver(score, best);
     }
 
-    // ✅ Gọi từ NightModeHazard khi bật night mode
     public void PlayNightModeSound()
     {
         PlaySFX(nightModeClip);
@@ -576,8 +634,6 @@ public class BoardManager : MonoBehaviour
                 }
 
         if (minX == -1) return;
-
-        Debug.Log($"🗑️ Destroy ô thấp nhất [{minX},{minY}] giá trị={minVal}");
         DestroyTile(minX, minY);
 
         if (!HasValidMoves())
@@ -601,57 +657,39 @@ public class BoardManager : MonoBehaviour
         StopAllCoroutines();
         isAnimating = false;
 
-        // ✅ Lấy tất cả giá trị đang có
         var values = new List<int>();
         for (int x = 0; x < width; x++)
-            for (int y = 0; y < height; y++)
-                if (grid[x, y] > 0)
-                    values.Add(grid[x, y]);
+        for (int y = 0; y < height; y++)
+        {
+            if (grid[x, y] > 0) values.Add(grid[x, y]);
+            if (tileUIs[x, y] != null) { Destroy(tileUIs[x, y].gameObject); tileUIs[x, y] = null; }
+            grid[x, y] = 0;
+        }
 
-        // ✅ Xoá hết tile cũ
-        for (int x = 0; x < width; x++)
-            for (int y = 0; y < height; y++)
-            {
-                if (tileUIs[x, y] != null)
-                {
-                    Destroy(tileUIs[x, y].gameObject);
-                    tileUIs[x, y] = null;
-                }
-                grid[x, y] = 0;
-            }
-
-        // ✅ Shuffle danh sách giá trị
         for (int i = values.Count - 1; i > 0; i--)
         {
             int j = Random.Range(0, i + 1);
             (values[i], values[j]) = (values[j], values[i]);
         }
 
-        // ✅ Random vị trí trống để đặt lại
-        var emptyPositions = new List<Vector2Int>();
+        var positions = new List<Vector2Int>();
         for (int x = 0; x < width; x++)
-            for (int y = 0; y < height; y++)
-                emptyPositions.Add(new Vector2Int(x, y));
+        for (int y = 0; y < height; y++)
+            positions.Add(new Vector2Int(x, y));
 
-        // Shuffle vị trí
-        for (int i = emptyPositions.Count - 1; i > 0; i--)
+        for (int i = positions.Count - 1; i > 0; i--)
         {
             int j = Random.Range(0, i + 1);
-            (emptyPositions[i], emptyPositions[j]) = (emptyPositions[j], emptyPositions[i]);
+            (positions[i], positions[j]) = (positions[j], positions[i]);
         }
 
-        // ✅ Đặt tile vào vị trí mới
         for (int i = 0; i < values.Count; i++)
         {
-            int x = emptyPositions[i].x;
-            int y = emptyPositions[i].y;
+            int x = positions[i].x, y = positions[i].y;
             grid[x, y] = values[i];
             SpawnTileAt(x, y, values[i]);
         }
-
-        Debug.Log($"✅ Shuffled {values.Count} tiles");
     }
-
     private void SpawnTileAt(int x, int y, int value)
     {
         TileUI tile = Instantiate(tilePrefab, tileParent);

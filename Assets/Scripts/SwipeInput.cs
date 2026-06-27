@@ -20,10 +20,9 @@ public class SwipeInput : MonoBehaviour
     private void Update()
     {
         HandleTouchInput();
-        HandleMouseInput(); // ✅ test trên Editor bằng chuột
+        HandleMouseInput();
     }
 
-    // ✅ Touch (Android)
     private void HandleTouchInput()
     {
         if (Input.touchCount == 0) return;
@@ -44,8 +43,6 @@ public class SwipeInput : MonoBehaviour
 
             Vector2 delta = touch.position - startTouchPos;
             ProcessSwipe(delta);
-
-            // ✅ Ghi nhận tap cho NightMode
             if (delta.magnitude < minSwipeDistance)
                 NightModeHazard.Instance?.RegisterTap();
         }
@@ -55,7 +52,6 @@ public class SwipeInput : MonoBehaviour
         }
     }
 
-    // ✅ Mouse (Editor)
     private Vector2 mouseStartPos;
     private float   mouseStartTime;
     private bool    mouseSwipe = false;
@@ -89,7 +85,6 @@ public class SwipeInput : MonoBehaviour
         if (delta.magnitude < minSwipeDistance) return;
         if (boardManager == null) return;
 
-        // ✅ Xác định hướng vuốt
         if (Mathf.Abs(delta.x) > Mathf.Abs(delta.y))
         {
             // Ngang

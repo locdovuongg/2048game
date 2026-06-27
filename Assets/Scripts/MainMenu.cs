@@ -52,7 +52,6 @@ public class MainMenu : MonoBehaviour
         if (mainCamera == null)
             mainCamera = Camera.main;
 
-        // ✅ Ẩn difficulty panel lúc đầu
         if (difficultyPanel != null)
             difficultyPanel.SetActive(false);
 
@@ -97,7 +96,6 @@ public class MainMenu : MonoBehaviour
     {
         if (isTransitioning) return;
         PlaySFX(hoverClip);
-        // ✅ Chỉ stop animation nút, không StopAllCoroutines
         if (buttonAnimCoroutine != null) StopCoroutine(buttonAnimCoroutine);
         buttonAnimCoroutine = StartCoroutine(ScaleTo(playButton, buttonOriginalScale * 1.12f, 0.15f));
         StartCoroutine(ColorTo(playButtonImage, hoverColor, 0.15f));
@@ -123,23 +121,19 @@ public class MainMenu : MonoBehaviour
     private void OnPlayButtonClick()
     {
         if (isTransitioning) return;
-        // ✅ Reset scale về đúng trước khi animate
         playButton.localScale = buttonOriginalScale;
         StartCoroutine(ShowDifficultyPanel());
     }
 
     private IEnumerator ShowDifficultyPanel()
     {
-        // Button bounce nhỏ
         yield return StartCoroutine(ScaleTo(playButton, buttonOriginalScale * 1.1f, 0.1f));
         yield return StartCoroutine(ScaleTo(playButton, buttonOriginalScale, 0.1f));
 
-        // ✅ Hiện panel với animation
         if (difficultyPanel != null)
         {
             difficultyPanel.SetActive(true);
 
-            // Ẩn + set vị trí ban đầu
             var cg = difficultyPanel.GetComponent<CanvasGroup>()
                   ?? difficultyPanel.AddComponent<CanvasGroup>();
             cg.alpha = 0f;
@@ -148,7 +142,6 @@ public class MainMenu : MonoBehaviour
             Vector2 originalPos = rect.anchoredPosition;
             rect.anchoredPosition = originalPos + new Vector2(0, -80f);
 
-            // Animate hiện ra
             float t = 0f;
             while (t < 1f)
             {
@@ -188,17 +181,16 @@ public class MainMenu : MonoBehaviour
         btn.localScale = original;
     }
 
-    // ✅ Gọi từ nút Easy/Normal/Hard trong Inspector OnClick
     public void SelectDifficulty(int level)
     {
         PlayerPrefs.SetInt("Difficulty", level);
         string[] names = { "Easy", "Normal", "Hard" };
-        Debug.Log($"✅ Difficulty: {names[level]}");
+        
         PlaySFX(clickClip);
         StartCoroutine(HidePanelAndPlay());
     }
 
-    // ✅ Nút Back → về lại main menu (ẩn panel)
+    //  Nút Back → về lại main menu (ẩn panel)
     public void CloseDifficultyPanel()
     {
         StartCoroutine(HideDifficultyPanel());
@@ -209,7 +201,7 @@ public class MainMenu : MonoBehaviour
         if (isTransitioning) yield break;
         isTransitioning = true;
 
-        // ✅ Ẩn difficulty panel
+        //  Ẩn difficulty panel
         if (difficultyPanel != null)
         {
             var cg = difficultyPanel.GetComponent<CanvasGroup>();

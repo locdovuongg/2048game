@@ -35,7 +35,6 @@ public class GameOverUI : MonoBehaviour
 
         if (watchAdButton != null) watchAdButton.onClick.AddListener(OnWatchAd);
         if (restartButton != null) restartButton.onClick.AddListener(OnShuffle);
-        if (homeButton != null)    homeButton.onClick.AddListener(OnHome);
     }
 
     public void ShowGameOver(int score, int bestScore)
@@ -68,7 +67,6 @@ public class GameOverUI : MonoBehaviour
         if (watchAdButton != null) watchAdButton.interactable = false;
         if (adButtonText != null) adButtonText.text = "Loading...";
 
-        // ✅ Dùng AdMob thay vì giả lập
         AdsManager.Instance?.ShowRewardedAd(
             onRewarded: () =>
             {
@@ -79,7 +77,6 @@ public class GameOverUI : MonoBehaviour
             },
             onFailed: () =>
             {
-                // Khôi phục nút nếu ad fail
                 if (watchAdButton != null) watchAdButton.interactable = true;
                 if (adButtonText != null) adButtonText.text = "Watch Ad\nContinue";
             }
@@ -94,15 +91,6 @@ public class GameOverUI : MonoBehaviour
         boardManager.RestartBoard();
         GameManager.Instance?.SetScore(0);
     }
-
-    private void OnHome()
-    {
-        adUsed = false;
-        IsGameOver = false;
-        Time.timeScale = 1f;
-        SceneManager.LoadScene("MainMenu");
-    }
-
     private void OnShuffle()
     {
         adUsed = false;
